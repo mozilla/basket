@@ -6,10 +6,12 @@ WORKDIR /app
 EXPOSE 8000
 CMD ["bin/run-prod.sh"]
 
-RUN apk --update upgrade && apk add ca-certificates gcc g++ libc-dev make gettext bash python-dev py-mysqldb xmlsec && \
+RUN apk --update upgrade && apk add ca-certificates gcc g++ libc-dev make gettext bash python-dev py-mysqldb && \
     rm -rf /var/cache/apk/*
 RUN sed -i -e 's/v3\.3/edge/g' /etc/apk/repositories
 RUN apk --no-cache add py-pip
+RUN sed -i -e 's/edge/testing/g' /etc/apk/repositories
+RUN apk --no-cache add xmlsec
 
 # Install app
 COPY requirements /app/requirements
