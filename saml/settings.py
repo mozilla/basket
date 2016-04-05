@@ -5,7 +5,7 @@ from decouple import config
 
 import saml
 
-DEBUG = config('DEBUG', cast=bool)
+DEBUG = config('DEBUG', default=False, cast=bool)
 SAML_DIR = os.path.dirname(saml.__file__)
 
 LOGIN_URL = '/saml2/login/'
@@ -21,6 +21,7 @@ SAML_ENTITY_ID = config('SAML_ENTITY_ID')
 SAML_REMOTE_METADATA = os.path.join(
     SAML_DIR, config('SAML_REMOTE_METADATA', default='remote_metadata.xml'))
 SAML_CREATE_UNKNOWN_USER = config('SAML_CREATE_USER', default=False, cast=bool)
+SAML_DJANGO_USER_MAIN_ATTRIBUTE = 'email'
 SAML_ATTRIBUTE_MAPPING = {
     'uid': ('username', ),
     'email': ('email', ),
