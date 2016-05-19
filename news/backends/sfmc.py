@@ -1,12 +1,12 @@
-from functools import wraps
-from time import time
-
 from django.conf import settings
 
-from django_statsd.clients import statsd
 from FuelSDK import ET_Client, ET_DataExtension_Row, ET_TriggeredSend
 
-from news.backends.common import NewsletterException, NewsletterNoResultsException
+from news.backends.common import get_timer_decorator, NewsletterException, \
+                                 NewsletterNoResultsException
+
+
+time_request = get_timer_decorator('news.backends.sfmc')
 
 
 def assert_response(resp):
@@ -22,34 +22,6 @@ def assert_results(resp):
 
 def build_attributes(data):
     return [{'Name': key, 'Value': value} for key, value in data.items()]
-
-
-def time_request(f):
-    """
-    Decorator for timing and counting requests to the API
-    """
-    @wraps(f)
-    def wrapped(*args, **kwargs):
-        starttime = time()
-        e = None
-        try:
-            resp = f(*args, **kwargs)
-        except NewsletterException as e:
-            pass
-        except Exception:
-            raise
-
-        totaltime = int((time() - starttime) * 1000)
-        statsd.timing('news.backends.sfmc.timing', totaltime)
-        statsd.timing('news.backends.sfmc.{}.timing'.format(f.__name__), totaltime)
-        statsd.incr('news.backends.sfmc.count')
-        statsd.incr('news.backends.sfmc.{}.count'.format(f.__name__))
-        if e:
-            raise
-        else:
-            return resp
-
-    return wrapped
 
 
 class SFMC(object):

@@ -15,6 +15,7 @@ from celery import Task
 
 from news.backends.common import NewsletterException, NewsletterNoResultsException
 from news.backends.exacttarget_rest import ETRestError, ExactTargetRest
+from news.backends.sfdc import sfdc
 from news.backends.sfmc import sfmc
 from news.celery import app as celery_app
 from news.models import FailedTask, Newsletter, Interest, QueuedTask
@@ -29,42 +30,6 @@ BAD_MESSAGE_ID_CACHE = get_cache('bad_message_ids')
 
 # Base message ID for confirmation email
 CONFIRMATION_MESSAGE = "confirmation_email"
-
-PHONEBOOK_GROUPS = (
-    'SYSTEMS_ADMINISTRATION',
-    'BOOT2GECKO',
-    'LOCALIZATION',
-    'QUALITY_ASSURANCE',
-    'CREATIVE',
-    'METRICS',
-    'MARKETING',
-    'POLICY',
-    'WEB_DEVELOPMENT',
-    'CODING',
-    'SUPPORT',
-    'UX',
-    'COMMUNICATIONS',
-    'PROGRAM_MANAGEMENT',
-    'LABS',
-    'WEBFWD',
-    'SECURITY',
-    'DEVELOPER_DOCUMENTATION',
-    'DEVELOPER_TOOLS',
-    'MOBILE',
-    'THUNDERBIRD',
-    'APPS',
-    'EVANGELISM',
-    'GRAPHICS',
-    'LEGAL',
-    'ADD-ONS',
-    'AUTOMATION',
-    'RECRUITING',
-    'PERSONA',
-    'BUSINESS_DEVELOPMENT',
-    'PEOPLE',
-    'ACCESSIBILITY',
-    'FUNDRAISING',
-)
 
 # This is prefixed with the 2-letter language code + _ before sending,
 # e.g. 'en_recovery_message', and '_T' if text, e.g. 'en_recovery_message_T'.
@@ -273,6 +238,7 @@ def add_fxa_activity(data):
 
 @et_task
 def update_fxa_info(email, lang, fxa_id, source_url=None, skip_welcome=False):
+    # TODO put this in a different data extension
     user = get_external_user_data(email=email)
     record = {
         'EMAIL_ADDRESS_': email,
@@ -281,10 +247,8 @@ def update_fxa_info(email, lang, fxa_id, source_url=None, skip_welcome=False):
         'FXA_LANGUAGE_ISO2': lang,
     }
     if user:
-        welcome_format = user['format']
         token = user['token']
     else:
-        welcome_format = 'H'
         token = generate_token()
         # only want source url for first contact
         record['SOURCE_URL'] = source_url or 'https://accounts.firefox.com'
@@ -292,10 +256,6 @@ def update_fxa_info(email, lang, fxa_id, source_url=None, skip_welcome=False):
     record['TOKEN'] = token
 
     apply_updates(settings.EXACTTARGET_DATA, record)
-
-    if not skip_welcome:
-        welcome = mogrify_message_id(FXACCOUNT_WELCOME, lang, welcome_format)
-        send_message.delay(welcome, email, token, welcome_format)
 
 
 @et_task
@@ -369,194 +329,125 @@ def update_get_involved(interest_id, lang, name, email, country, email_format,
         send_welcomes(user, to_subscribe, email_format)
 
 
-@et_task
-def update_phonebook(data, token):
-    user_data = get_user_data(token=token)
-    if not user_data:
-        # no user with that token
-        return
-
-    record = {
-        'EMAIL_ADDRESS': user_data['email'],
-        'TOKEN': token,
-    }
-    if 'city' in data:
-        record['CITY'] = data['city']
-    if 'country' in data:
-        record['COUNTRY'] = data['country']
-
-    record.update((k, v) for k, v in data.items() if k in PHONEBOOK_GROUPS)
-
-    sfmc.update_row('PHONEBOOK', record)
+FSA_FIELDS = {
+    'EMAIL_ADDRESS': 'Email',
+    'TOKEN': 'Token__c',
+    'FIRST_NAME': 'FirstName',
+    'LAST_NAME': 'LastName',
+    'COUNTRY_': 'MailingCountryCode',
+    'STUDENTS_SCHOOL': 'FSA_School__c',
+    'STUDENTS_GRAD_YEAR': 'FSA_Grad_Year__c',
+    'STUDENTS_MAJOR': 'FSA_Major__c',
+    'STUDENTS_CITY': 'FSA_City__c',
+    'STUDENTS_CURRENT_STATUS': 'FSA_Current_Status__c',
+    'STUDENTS_ALLOW_SHARE': 'FSA_Allow_Info_Shared__c',
+}
 
 
 @et_task
 def update_student_ambassadors(data, token):
+    user_data = {'token': token}
     data['TOKEN'] = token
-    sfmc.update_row('Student_Ambassadors', data)
+    update_data = {}
+    for k, fn in FSA_FIELDS:
+        if k in data:
+            update_data[fn] = data[k]
+            if k == 'STUDENTS_ALLOW_SHARE':
+                # convert to boolean
+                update_data[fn] = update_data[fn].lower().startswith('y')
 
-
-# Return codes for update_user
-UU_ALREADY_CONFIRMED = 1
-UU_EXEMPT_PENDING = 2
-UU_EXEMPT_NEW = 3
-UU_MUST_CONFIRM_PENDING = 4
-UU_MUST_CONFIRM_NEW = 5
+    sfdc.update(user_data, update_data)
 
 
 @et_task
 def update_user(data, email, token, api_call_type, optin):
-    """Task for updating user's preferences and newsletters.
+    """Legacy Task for updating user's preferences and newsletters.
 
-    :param dict data: POST data from the form submission
-    :param string email: User's email address
-    :param string token: User's token. If None, the token will be
+    @param dict data: POST data from the form submission
+    @param string email: User's email address
+    @param string token: User's token. If None, the token will be
         looked up, and if no token is found, one will be created for the
         given email.
-    :param int api_call_type: What kind of API call it was. Could be
+    @param int api_call_type: What kind of API call it was. Could be
         SUBSCRIBE, UNSUBSCRIBE, or SET.
-    :param boolean optin: Whether the user should go through the
-        double-optin process or not. If ``optin`` is ``True`` then
-        the user should bypass the double-optin process.
+    @param boolean optin: legacy option. it is now included in data. may be removed after
+        initial deployment (required so that existing tasks in the queue won't fail for having
+        too many arguments).
 
-    :returns: One of the return codes UU_ALREADY_CONFIRMED,
-        etc. (see code) to indicate what case we figured out we were
-        doing.  (These are primarily for tests to use.)
-    :raises: NewsletterException if there are any errors that would be
+    @returns: None
+    @raises: NewsletterException if there are any errors that would be
         worth retrying. Our task wrapper will retry in that case.
+
+    TODO remove after initial deployment
     """
-    # Get the user's current settings from ET, if any
-    user_data = get_user_data(email=email, token=token)
-    # If we don't find the user, get_user_data returns None. Create
-    # a minimal dictionary to use going forward. This will happen
-    # often due to new people signing up.
-    if user_data is None:
-        user_data = {
-            'email': email,
-            'token': token or generate_token(),
-            'master': False,
-            'pending': False,
-            'confirmed': False,
-            'lang': '',
-            'status': 'ok',
-        }
+    # backward compat with existing items on the queue when deployed.
+    if optin is not None:
+        data['optin'] = optin
 
-    token = user_data['token']
-    email = user_data['email']
+    upsert_contact(api_call_type, data, get_user_data(email=email, token=token))
 
-    # Parse the parameters
-    # `record` will contain the data we send to ET in the format they want.
-    record = {
-        'EMAIL_ADDRESS_': email,
-        'TOKEN': token,
-        'EMAIL_PERMISSION_STATUS_': 'I',
-        'MODIFIED_DATE_': gmttime(),
-    }
 
-    extra_fields = {
-        'country': 'COUNTRY_',
-        'lang': 'LANGUAGE_ISO2',
-        'source_url': 'SOURCE_URL',
-        'first_name': 'FIRST_NAME',
-        'last_name': 'LAST_NAME',
-    }
+@et_task
+def upsert_user(api_call_type, data):
+    """
+    Update or insert (upsert) a contact record in SFDC
 
-    # Optionally add more fields
-    for field, et_id in extra_fields.items():
-        if field in data:
-            record[et_id] = data[field]
+    @param int api_call_type: What kind of API call it was. Could be
+        SUBSCRIBE, UNSUBSCRIBE, or SET.
+    @param dict data: POST data from the form submission
+    @return:
+    """
+    upsert_contact(api_call_type, data,
+                   get_user_data(data.get('token'), data.get('email')))
 
-    lang = record.get('LANGUAGE_ISO2', '') or ''
 
-    if lang:
-        # User asked for a language change. Use the new language from
-        # here on.
-        user_data['lang'] = lang
-    else:
-        # Use `lang` as a shorter reference to user_data['lang']
-        lang = user_data['lang']
+def upsert_contact(api_call_type, data, user_data):
+    """
+    Update or insert (upsert) a contact record in SFDC
 
-    # We need an HTML/Text format choice for sending welcome messages, and
-    # optionally to update their ET record
-    if 'format' in data:  # Submitted in call
-        fmt = 'T' if data.get('format', 'H').upper().startswith('T') else 'H'
-        # We only set the format in ET if the call asked us to
-        record['EMAIL_FORMAT_'] = fmt
-    elif 'format' in user_data:  # Existing user preference
-        fmt = user_data['format']
-    else:  # Default to 'H'
-        fmt = 'H'
-    # From here on, fmt is either 'H' or 'T', preferring 'H'
-
+    @param int api_call_type: What kind of API call it was. Could be
+        SUBSCRIBE, UNSUBSCRIBE, or SET.
+    @param dict data: POST data from the form submission
+    @param dict user_data: existing contact data from SFDC
+    @return: token, created
+    """
+    if 'format' in data:
+        data['format'] = 'T' if data['format'].upper().startswith('T') else 'H'
     newsletters = [x.strip() for x in data.get('newsletters', '').split(',')]
-
-    cur_newsletters = user_data.get('newsletters', None)
-    if cur_newsletters is not None:
-        cur_newsletters = set(cur_newsletters)
+    if user_data:
+        cur_newsletters = user_data.get('newsletters', None)
+    else:
+        cur_newsletters = None
 
     # Set the newsletter flags in the record by comparing to their
     # current subscriptions.
-    to_subscribe, to_unsubscribe = parse_newsletters(record, api_call_type,
-                                                     newsletters,
-                                                     cur_newsletters)
+    data['newsletters'] = parse_newsletters(api_call_type, newsletters, cur_newsletters)
 
-    # Are they subscribing to any newsletters that don't require confirmation?
-    # When including any newsletter that does not
-    # require confirmation, user gets a pass on confirming and goes straight
-    # to confirmed.
-    exempt_from_confirmation = optin or Newsletter.objects\
-        .filter(slug__in=to_subscribe, requires_double_optin=False)\
-        .exists()
+    if not (data.get('optin') or (user_data and user_data.get('optin'))):
+        # Are they subscribing to any newsletters that don't require confirmation?
+        # When including any newsletter that does not
+        # require confirmation, user gets a pass on confirming and goes straight
+        # to confirmed.
+        to_subscribe = [nl for nl, sub in data['newsletters'].iteritems() if sub]
+        exempt_from_confirmation = Newsletter.objects \
+            .filter(slug__in=to_subscribe, requires_double_optin=False) \
+            .exists()
+        data['optin'] = exempt_from_confirmation
 
-    # Send welcomes when api_call_type is SUBSCRIBE and trigger_welcome
-    # arg is absent or 'Y'.
-    should_send_welcomes = data.get('trigger_welcome', 'Y') == 'Y' and api_call_type == SUBSCRIBE
-
-    MASTER = settings.EXACTTARGET_DATA
-    OPT_IN = settings.EXACTTARGET_OPTIN_STAGE
-
-    if user_data['confirmed']:
-        # The user is already confirmed.
-        # Just add any new subs to whichever of master or optin list is
-        # appropriate, and send welcomes.
-        target_et = MASTER if user_data['master'] else OPT_IN
-        apply_updates(target_et, record)
-        if should_send_welcomes:
-            send_welcomes(user_data, to_subscribe, fmt)
-        return_code = UU_ALREADY_CONFIRMED
-    elif exempt_from_confirmation:
-        # This user is not confirmed, but they
-        # qualify to be excepted from confirmation.
-        if user_data['pending']:
-            # We were waiting for them to confirm.  Update the data in
-            # their record (currently in the Opt-in table), then go
-            # ahead and confirm them. This will also send welcomes.
-            apply_updates(OPT_IN, record)
-            confirm_user(user_data['token'], user_data)
-            return_code = UU_EXEMPT_PENDING
-        else:
-            # Brand new user: Add them directly to master subscriber DB
-            # and send welcomes.
-            record['CREATED_DATE_'] = gmttime()
-            apply_updates(MASTER, record)
-            if should_send_welcomes:
-                send_welcomes(user_data, to_subscribe, fmt)
-            return_code = UU_EXEMPT_NEW
+    if user_data is None:
+        # no user found. create new one.
+        data['token'] = generate_token()
+        sfdc.add(data)
+        created = True
     else:
-        # This user must confirm
-        if user_data['pending']:
-            return_code = UU_MUST_CONFIRM_PENDING
-        else:
-            # Creating a new record, need a couple more fields
-            record['CREATED_DATE_'] = gmttime()
-            record['SubscriberKey'] = record['TOKEN']
-            record['EmailAddress'] = record['EMAIL_ADDRESS_']
-            return_code = UU_MUST_CONFIRM_NEW
-        # Create or update OPT_IN record and send email telling them (or
-        # reminding them) to confirm.
-        apply_updates(OPT_IN, record)
-        send_confirm_notice(email, token, lang, fmt, to_subscribe)
-    return return_code
+        # update record
+        if not user_data['token']:
+            data['token'] = generate_token()
+
+        sfdc.update(user_data, data)
+        created = False
+
+    return data['token'], created
 
 
 def apply_updates(database, record):
@@ -698,7 +589,7 @@ def send_welcomes(user_data, newsletter_slugs, format):
 
 
 @et_task
-def confirm_user(token, user_data=None):
+def confirm_user(token):
     """
     Confirm any pending subscriptions for the user with this token.
 
@@ -712,28 +603,19 @@ def confirm_user(token, user_data=None):
     :raises: BasketError for fatal errors, NewsletterException for retryable
         errors.
     """
+    user_data = get_user_data(token=token)
+
     if user_data is None:
-        user_data = get_user_data(token=token)
+        raise BasketError(MSG_USER_NOT_FOUND)
 
-        if user_data is None:
-            raise BasketError(MSG_USER_NOT_FOUND)
-
-    if user_data['confirmed']:
-        log.debug('In confirm_user, user with token %s '
-                 'is already confirmed' % token)
+    if user_data['optin']:
+        # already confirmed
         return
 
     if not ('email' in user_data and user_data['email']):
         raise BasketError('token has no email in ET')
 
-    # Add user's token to the confirmation database at ET. A nightly
-    # task will somehow do something about it.
-    apply_updates(settings.EXACTTARGET_CONFIRMATION, {'TOKEN': token})
-
-    # Now, if they're subscribed to any newsletters with confirmation
-    # welcome messages, send those.
-    send_welcomes(user_data, user_data['newsletters'],
-                  user_data.get('format', 'H'))
+    sfdc.update(user_data, {'optin': True})
 
 
 @et_task
@@ -761,10 +643,7 @@ def add_sms_user_optin(mobile_number):
 @et_task
 def update_custom_unsub(token, reason):
     """Record a user's custom unsubscribe reason."""
-    sfmc.update_row(settings.EXACTTARGET_DATA, {
-        'TOKEN': token,
-        'UNSUBSCRIBE_REASON': reason,
-    })
+    sfdc.update({'token': token}, {'Unsubscribe_Reason__c': reason})
 
 
 def attempt_fix(database, record, task, e):
@@ -794,6 +673,11 @@ def send_recovery_message_task(email):
     if lang not in settings.RECOVER_MSG_LANGS:
         lang = 'en'
 
+    sfmc.upsert_row(settings.EXACTTARGET_DATA, {
+        'TOKEN': user_data['token'],
+        'EMAIL_ADDRESS_': user_data['email'],
+        'EMAIL_FORMAT_': format,
+    })
     message_id = mogrify_message_id(RECOVERY_MESSAGE_ID, lang, format)
     send_message.delay(message_id, email, user_data['token'], format)
 

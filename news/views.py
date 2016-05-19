@@ -28,9 +28,10 @@ from news.tasks import (
     update_custom_unsub,
     update_fxa_info,
     update_get_involved,
-    update_phonebook,
     update_student_ambassadors,
-    update_user)
+    upsert_contact,
+    upsert_user,
+)
 from news.utils import (
     SET,
     SUBSCRIBE,
@@ -48,7 +49,8 @@ from news.utils import (
     language_code_is_valid,
     NewsletterException,
     validate_email,
-    newsletter_exception_response, get_or_create_user_data)
+    newsletter_exception_response,
+)
 
 
 IP_RATE_LIMIT_EXTERNAL = getattr(settings, 'IP_RATE_LIMIT_EXTERNAL', '40/m')
@@ -406,7 +408,7 @@ def user(request, token):
     if request.method == 'POST':
         data = request.POST.dict()
         data['token'] = token
-        return update_user_task(request, SET, data=data)
+        return update_user_task(request, SET, data)
 
     return get_user(token)
 
@@ -497,13 +499,6 @@ def custom_unsub_reason(request):
 @csrf_exempt
 def custom_update_student_ambassadors(request, token):
     update_student_ambassadors.delay(request.POST.dict(), token)
-    return HttpResponseJSON({'status': 'ok'})
-
-
-@require_POST
-@csrf_exempt
-def custom_update_phonebook(request, token):
-    update_phonebook.delay(request.POST.dict(), token)
     return HttpResponseJSON({'status': 'ok'})
 
 
@@ -629,7 +624,7 @@ def list_newsletters(request):
                   {'newsletters': active_newsletters})
 
 
-def update_user_task(request, api_call_type, data=None, optin=True, sync=False):
+def update_user_task(request, api_call_type, data=None, optin=False, sync=False):
     """Call the update_user task async with the right parameters.
 
     If sync==True, be sure to include the token in the response.
@@ -698,22 +693,31 @@ def update_user_task(request, api_call_type, data=None, optin=True, sync=False):
             'code': errors.BASKET_USAGE_ERROR,
         }, 400)
 
+    data['optin'] = optin
+
     if sync:
         try:
-            user_data, created = get_or_create_user_data(email=email, token=token)
+            user_data = get_user_data(email=email, token=token)
         except NewsletterException as e:
             return newsletter_exception_response(e)
 
-        update_user.delay(data, user_data['email'], user_data['token'], api_call_type, optin,
-                          start_time=time())
+        if not user_data:
+            if not email:
+                # must have email to create a user
+                return HttpResponseJSON({
+                    'status': 'error',
+                    'desc': MSG_EMAIL_OR_TOKEN_REQUIRED,
+                    'code': errors.BASKET_USAGE_ERROR,
+                }, 400)
+
+        token, created = upsert_contact(api_call_type, data, user_data)
         return HttpResponseJSON({
             'status': 'ok',
-            'token': user_data['token'],
+            'token': token,
             'created': created,
         })
     else:
-        update_user.delay(data, email, token, api_call_type, optin,
-                          start_time=time())
+        upsert_user.delay(api_call_type, data, start_time=time())
         return HttpResponseJSON({
             'status': 'ok',
         })

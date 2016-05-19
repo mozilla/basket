@@ -96,3 +96,5 @@ raven==5.18.0 \
 contextlib2==0.5.3 \
     --hash=sha256:888a280f24dcff2cc55ac0e51fc764484b284f91ff711a219e459a6d5f76de2b \
     --hash=sha256:30e500f13921c73c96f49a6dd2adfbdd92bc3fae12183e91b06b2e4583486206
+simple-salesforce==0.68.1 \
+    --hash=sha256:33f82aec8a9a6270ec70b4b7f0027504ffe9a9aa2bb199682707e1b4714c4c41

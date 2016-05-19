@@ -90,6 +90,15 @@ def _get_newsletters_data():
     }
 
 
+def newsletter_map():
+    by_name = _newsletters()['by_name']
+    return {name: nl.vendor_id for name, nl in by_name.iteritems()}
+
+
+def newsletter_inv_map():
+    return {v: k for k, v in newsletter_map().iteritems()}
+
+
 def newsletter_field(name):
     """Lookup the backend-specific field (vendor ID) for the newsletter"""
     try:
