@@ -29,6 +29,10 @@ FIELD_DEFAULTS = {
     'country': '',
     'lang': '',
 }
+FIELD_PROCESSORS = {
+    'country': lambda x: x.lower(),
+    'lang': lambda x: x.lower(),
+}
 
 
 def to_vendor(data):
@@ -76,7 +80,10 @@ def from_vendor(contact):
             data_name = INV_FIELD_MAP[fn]
             if data_name in FIELD_DEFAULTS:
                 fv = fv or FIELD_DEFAULTS[data_name]
-            data[data_name] = fv
+            if data_name in FIELD_PROCESSORS:
+                data[data_name] = FIELD_PROCESSORS[data_name](fv)
+            else:
+                data[data_name] = fv
         elif fn in news_map and fv:
             newsletters.append(news_map[fn])
 
@@ -154,11 +161,18 @@ class SFDC(object):
         @param data: dict of user data
         @return: None
         """
+        # need a copy because we'll modify it
+        data = data.copy()
         if 'id' in record:
             contact_id = record['id']
         elif 'token' in record or 'email' in record:
             fn = 'token' if 'token' in record else 'email'
             contact_id = '{}/{}'.format(FIELD_MAP[fn], record[fn])
+            # can't send the ID field in the data
+            try:
+                del data[fn]
+            except KeyError:
+                pass
         else:
             raise KeyError('id, token, or email required')
 
