@@ -11,6 +11,7 @@ from django_statsd.clients import statsd
 
 import requests
 import user_agents
+import simple_salesforce as sfapi
 from celery import Task
 
 from news.backends.common import NewsletterException, NewsletterNoResultsException
@@ -157,7 +158,8 @@ def et_task(func):
 
         try:
             return func(*args, **kwargs)
-        except (IOError, NewsletterException, ETRestError) as e:
+        except (IOError, NewsletterException, ETRestError,
+                requests.RequestException, sfapi.SalesforceError) as e:
             # These could all be connection issues, so try again later.
             # IOError covers URLError and SSLError.
             exc_msg = str(e)
@@ -437,17 +439,19 @@ def upsert_contact(api_call_type, data, user_data):
     if user_data is None:
         # no user found. create new one.
         data['token'] = generate_token()
-        sfdc.add(data)
-        created = True
-    else:
-        # update record
-        if not user_data['token']:
-            data['token'] = generate_token()
+        try:
+            sfdc.add(data)
+            return data['token'], True
+        except sfapi.SalesforceMalformedRequest:
+            # possibly a duplicate email. try the update below.
+            del data['token']
 
-        sfdc.update(user_data, data)
-        created = False
+    # update record
+    if not (user_data and user_data['token']):
+        data['token'] = generate_token()
 
-    return data['token'], created
+    sfdc.update(user_data, data)
+    return data['token'], False
 
 
 def apply_updates(database, record):

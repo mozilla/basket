@@ -138,7 +138,7 @@ class SFDC(object):
         @return: dict
         """
         assert token or email, 'token or email is required'
-        id_field = 'Token__c' if token else 'Email'
+        id_field = FIELD_MAP['token' if token else 'email']
         contact = self.contact.get_by_custom_id(id_field, token or email)
         return from_vendor(contact)
 
@@ -169,10 +169,7 @@ class SFDC(object):
             fn = 'token' if 'token' in record else 'email'
             contact_id = '{}/{}'.format(FIELD_MAP[fn], record[fn])
             # can't send the ID field in the data
-            try:
-                del data[fn]
-            except KeyError:
-                pass
+            data.pop(fn, None)
         else:
             raise KeyError('id, token, or email required')
 
