@@ -34,6 +34,17 @@ FIELD_PROCESSORS = {
     'country': lambda x: x.lower(),
     'lang': lambda x: x.lower(),
 }
+FIELD_MAX_LENGTHS = {
+    'FirstName': 40,
+    'LastName': 80,
+    'Browser_Locale__c': 10,
+    'Signup_Source_URL__c': 255,
+    'Unsubscribe_Reason__c': 1000,
+    'FSA_School__c': 100,
+    'FSA_Grad_Year__c': 4,
+    'FSA_Major__c': 100,
+    'FSA_City__c': 100,
+}
 
 
 def to_vendor(data):
@@ -64,6 +75,12 @@ def to_vendor(data):
             # we got a list of slugs for subscriptions
             for nl in newsletters:
                 contact[news_map[nl]] = True
+
+    # truncate long data
+    for field, length in FIELD_MAX_LENGTHS.items():
+        if field in contact and len(contact[field]) > length:
+            statsd.incr('news.backends.sfdc.data_truncated')
+            contact[field] = contact[field][:length]
 
     return contact
 
