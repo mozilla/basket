@@ -171,6 +171,19 @@ def language_code_is_valid(code):
         return bool(LANG_RE.match(code))
 
 
+IGNORE_USER_FIELDS = [
+    'id',
+    'reason',
+    'source_url',
+    'fsa_school',
+    'fsa_grad_year',
+    'fsa_major',
+    'fsa_city',
+    'fsa_current_status',
+    'fsa_allow_share',
+]
+
+
 def get_user_data(token=None, email=None):
     """Return a dictionary of the user's data from Exact Target.
     Look them up by their email if given, otherwise by the token.
@@ -225,7 +238,11 @@ def get_user_data(token=None, email=None):
         raise NewsletterException('Email service provider auth failure',
                                   error_code=errors.BASKET_EMAIL_PROVIDER_AUTH_FAILURE,
                                   status_code=500)
-    del user['id']
+
+    # don't send some of the returned data
+    for fn in IGNORE_USER_FIELDS:
+        user.pop(fn, None)
+
     user['status'] = 'ok'
     return user
 

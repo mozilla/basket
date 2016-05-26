@@ -23,6 +23,13 @@ FIELD_MAP = {
     'source_url': 'Signup_Source_URL__c',
     'created_date': 'CreatedDate',
     'last_modified_date': 'LastModifiedDate',
+    'reason': 'Unsubscribe_Reason__c',
+    'fsa_school': 'FSA_School__c',
+    'fsa_grad_year': 'FSA_Grad_Year__c',
+    'fsa_major': 'FSA_Major__c',
+    'fsa_city': 'FSA_City__c',
+    'fsa_current_status': 'FSA_Current_Status__c',
+    'fsa_allow_share': 'FSA_Allow_Info_Shared__c',
 }
 INV_FIELD_MAP = {v: k for k, v in FIELD_MAP.items()}
 FIELD_DEFAULTS = {

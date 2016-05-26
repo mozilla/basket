@@ -332,26 +332,25 @@ def update_get_involved(interest_id, lang, name, email, country, email_format,
 
 
 FSA_FIELDS = {
-    'EMAIL_ADDRESS': 'Email',
-    'TOKEN': 'Token__c',
-    'FIRST_NAME': 'FirstName',
-    'LAST_NAME': 'LastName',
-    'COUNTRY_': 'MailingCountryCode',
-    'STUDENTS_SCHOOL': 'FSA_School__c',
-    'STUDENTS_GRAD_YEAR': 'FSA_Grad_Year__c',
-    'STUDENTS_MAJOR': 'FSA_Major__c',
-    'STUDENTS_CITY': 'FSA_City__c',
-    'STUDENTS_CURRENT_STATUS': 'FSA_Current_Status__c',
-    'STUDENTS_ALLOW_SHARE': 'FSA_Allow_Info_Shared__c',
+    'EMAIL_ADDRESS': 'email',
+    'TOKEN': 'token',
+    'FIRST_NAME': 'first_name',
+    'LAST_NAME': 'last_name',
+    'COUNTRY_': 'country',
+    'STUDENTS_SCHOOL': 'fsa_school',
+    'STUDENTS_GRAD_YEAR': 'fsa_grad_year',
+    'STUDENTS_MAJOR': 'fsa_major',
+    'STUDENTS_CITY': 'fsa_city',
+    'STUDENTS_CURRENT_STATUS': 'fsa_current_status',
+    'STUDENTS_ALLOW_SHARE': 'fsa_allow_share',
 }
 
 
 @et_task
 def update_student_ambassadors(data, token):
     user_data = {'token': token}
-    data['TOKEN'] = token
     update_data = {}
-    for k, fn in FSA_FIELDS:
+    for k, fn in FSA_FIELDS.items():
         if k in data:
             update_data[fn] = data[k]
             if k == 'STUDENTS_ALLOW_SHARE':
@@ -647,7 +646,7 @@ def add_sms_user_optin(mobile_number):
 @et_task
 def update_custom_unsub(token, reason):
     """Record a user's custom unsubscribe reason."""
-    sfdc.update({'token': token}, {'Unsubscribe_Reason__c': reason})
+    sfdc.update({'token': token}, {'reason': reason})
 
 
 def attempt_fix(database, record, task, e):
