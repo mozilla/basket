@@ -9,6 +9,7 @@ from news.newsletters import newsletter_map, newsletter_inv_map
 
 
 time_request = get_timer_decorator('news.backends.sfdc')
+LAST_NAME_DEFAULT_VALUE = '_'
 FIELD_MAP = {
     'id': 'Id',
     'email': 'Email',
@@ -45,6 +46,8 @@ def to_vendor(data):
     contact = {
         # True for every contact moving through basket
         'Subscriber__c': True,
+        # stupidly, last_name is required by SFDC
+        FIELD_MAP['last_name']: LAST_NAME_DEFAULT_VALUE,
     }
     for k, v in data.iteritems():
         if k in FIELD_MAP:
