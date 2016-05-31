@@ -457,11 +457,13 @@ def upsert_contact(api_call_type, data, user_data):
             del data['token']
 
     # update record
-    if not (user_data and user_data['token']):
-        data['token'] = generate_token()
+    if user_data and user_data['token']:
+        token = user_data['token']
+    else:
+        token = data['token'] = generate_token()
 
     sfdc.update(user_data, data)
-    return data['token'], False
+    return token, False
 
 
 def send_transactional_messages(data, newsletters):
