@@ -53,6 +53,11 @@ class Newsletter(models.Model):
         help_text="Whether this newsletter is private. Private newsletters "
                   "require the subscribe requests to use an API key.",
     )
+    transactional = models.BooleanField(
+        default=False,
+        help_text='Whether this newsletter is purely for transactional messaging '
+                  '(e.g. Firefox Mobile download link emails).',
+    )
     # Note: use .welcome_id property to get this field or the default
     welcome = models.CharField(
         max_length=64,
@@ -65,6 +70,7 @@ class Newsletter(models.Model):
     vendor_id = models.CharField(
         max_length=128,
         help_text="The backend vendor's identifier for this newsletter",
+        blank=True,
     )
     languages = models.CharField(
         max_length=200,

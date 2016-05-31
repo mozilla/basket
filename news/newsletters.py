@@ -83,7 +83,8 @@ def _get_newsletters_data():
     by_vendor_id = {}
     for nl in Newsletter.objects.all():
         by_name[nl.slug] = nl
-        by_vendor_id[nl.vendor_id] = nl
+        if nl.vendor_id:
+            by_vendor_id[nl.vendor_id] = nl
     return {
         'by_name': by_name,
         'by_vendor_id': by_vendor_id,

@@ -420,6 +420,17 @@ def upsert_contact(api_call_type, data, user_data):
     else:
         cur_newsletters = None
 
+    # check for and remove transactional newsletters
+    transactionals = Newsletter.objects.filter(slug__in=newsletters, transactional=True)\
+                                       .values_list('slug', flat=True)
+    if transactionals:
+        newsletters = list(set(newsletters) - set(transactionals))
+        # fake token. not necessary for transactionals.
+        send_transactional_messages(data, transactionals)
+        if not newsletters:
+            # no regular newsletters
+            return None, None
+
     # Set the newsletter flags in the record by comparing to their
     # current subscriptions.
     data['newsletters'] = parse_newsletters(api_call_type, newsletters, cur_newsletters)
@@ -451,6 +462,17 @@ def upsert_contact(api_call_type, data, user_data):
 
     sfdc.update(user_data, data)
     return data['token'], False
+
+
+def send_transactional_messages(data, newsletters):
+    data = data.copy()
+    data['token'] = generate_token()
+    # TODO verify transactional DE name and fields
+    sfmc.add_row(settings.EXACTTARGET_TRANSACTIONAL, {
+        'EMAIL': data['email'],
+        'TOKEN': data['token'],
+    })
+    send_welcomes(data, newsletters, data['format'])
 
 
 def apply_updates(database, record):
@@ -562,9 +584,7 @@ def send_welcomes(user_data, newsletter_slugs, format):
                   % user_data)
         return
 
-    newsletters = Newsletter.objects.filter(
-        slug__in=newsletter_slugs
-    )
+    newsletters = Newsletter.objects.filter(slug__in=newsletter_slugs)
 
     # We don't want any duplicate welcome messages, so make a set
     # of the ones to send, then send them
@@ -585,8 +605,6 @@ def send_welcomes(user_data, newsletter_slugs, format):
     # Note: it's okay not to send a welcome if none of the newsletters
     # have one configured.
     for welcome in welcomes_to_send:
-        log.debug("Sending welcome %s to user %s %s" %
-                 (welcome, user_data['email'], user_data['token']))
         send_message.delay(welcome, user_data['email'], user_data['token'],
                            format)
 
