@@ -455,6 +455,7 @@ def upsert_contact(api_call_type, data, user_data):
         except sfapi.SalesforceMalformedRequest:
             # possibly a duplicate email. try the update below.
             del data['token']
+            user_data = {'email': data['email']}
 
     # update record
     if user_data and user_data['token']:
