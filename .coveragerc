@@ -1,5 +1,0 @@
-[run]
-source = news
-omit =
-  news/tests/*
-  news/migrations/*

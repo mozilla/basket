@@ -1,4 +1,0 @@
-DEBUG=False
-DATABASE_URL=sqlite:///basket.db
-CELERY_ALWAYS_EAGER=True
-SECRET_KEY=sssssssssshhhhhhhhhhh
