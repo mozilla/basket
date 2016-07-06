@@ -2,20 +2,8 @@
 Basket
 ======
 
-Interact with our email marketing provider via a nice simple HTTP API.
+This project has moved to our new `Mozilla Marketing GitHub Organization <https://github.com/mozmar/basket/>`_. Please follow us there.
 
-.. image:: https://circleci.com/gh/mozilla/basket/tree/master.svg?style=svg
-    :target: https://circleci.com/gh/mozilla/basket/tree/master
+Thanks,
 
-
-Docs
-----
-
-Documentation can be found at http://basket.readthedocs.org/ .
-
-
-License
--------
-
-This software is licensed under the `Mozilla Public License Version 2.0 <https://www.mozilla.org/MPL/2.0/>`_. For more
-information, read the file ``LICENSE``.
+Mozilla Marketing Webdev Team
